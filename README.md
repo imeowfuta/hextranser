@@ -7,8 +7,8 @@ this tool allows the extraction of the colors from any text based theme file int
 
 colors from the file are distributed in the image, one to a each pixel, from left to right, descending row by row
 
-this image can then be downloaded and edited in any pixel based image manipulation software, 
-this is desirable when wanting to do bulk color manipulation operations on large images for example: 
+this image can then be downloaded and edited in image manipulation software, 
+this is desirable when wanting to do bulk color manipulation operations on large themes, for example: 
 - increasing the contrast on sets of colors that are difficult to differentiate
 - inverting the image to get the start of a dark mode theme
 - hue shifting a specific selection of colors to change a motif
