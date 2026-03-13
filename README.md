@@ -1,7 +1,7 @@
 # hextranser
 a tool to allow bulk editing of colors in a theme file using image editors
 
-![screenshot of a the tool showing a theme file next to it's extracted color image, a pixel art cat has been draws on it using a paint program](screenshot.png)
+![screenshot showing a theme file next to it's extracted colormap image, a pixel art cat has been draws on the image using a paint program](screenshot.png)
 
 this tool allows the extraction of the colors from any text based theme file into an image where each pixel represents a color 
 
