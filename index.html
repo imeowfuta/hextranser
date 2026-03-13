@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hextranser Color Theme Editor</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; color: #eee;}
+        body { background: #000000; padding: 20px; }
+        main {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        nav {
+            grid-column: 1 / -1;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        label, button{
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            background: #333;
+            border: 1px solid #AAA;
+            cursor: pointer;
+        }
+        label:hover, button:hover { background: #444; }
+        textarea {
+            padding: 10px;
+            background: #252525;
+            border: 1px solid #AAA;
+            font-family: monospace;
+            font-size: 12px;
+            resize: both;
+            min-height: 100%;
+            min-width: 100%;
+        }
+        .preview {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        canvas {
+            image-rendering: pixelated;
+            background-image: linear-gradient(45deg, #666 25%, transparent 25%), linear-gradient(-45deg, #666 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #666 75%), linear-gradient(-45deg, transparent 75%, #666 75%);
+            background-size: 16px 16px;
+            background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+            background-color: #999;
+        }
+        p{
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: #ffffff;
+            font-size: 14px;
+        }
+        footer {
+            margin-top: 5px;
+            max-width: 1200px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        @media (max-width: 800px) {
+            main { grid-template-columns: 1fr; }
+            textarea { min-height: 300px; }
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <nav>
+            <input type="file" id="themeFile" onchange="handleThemeUpload(event)" style="display: none;">
+            <button type="button" onclick="document.getElementById('themeFile').click()" aria-label="Upload theme file">Upload Original Theme File 📂📄</button>
+            <p aria-hidden="true">></p>
+            <button onclick="downloadImage()">Download Image 📥🖼️</button>
+            <p aria-hidden="true">></p>
+            <p>edit theme image externally</p>
+            <p aria-hidden="true">></p>
+            <input type="file" id="imageFile" accept=".png" onchange="handleImageUpload(event)" style="display: none;">
+            <button type="button" onclick="document.getElementById('imageFile').click()" aria-label="Upload edited image">ReUpload Image 📤🖼️</button>
+            <p aria-hidden="true">></p>
+            <button onclick="downloadTheme()">Download Changed Theme File 💾📄</button>
+        </nav>
+
+        <section>
+            <textarea id="themeText" placeholder="upload a theme file or paste text here"></textarea>
+        </section>
+
+        <section class="preview">
+            <canvas id="canvas"></canvas>
+            <p class="info"><span id="colorCount">0</span> colors found</p>
+        </section>
+    </main>
+
+    <footer>
+        <br>
+        <p>this tool coverts the colors from any plaintext theme file into an image where each pixel represents a color (left to right, row by row)<br/>
+        you can then download and edit that image in a graphics program and reupload it to insert the changed colors back into the theme file<br/>
+        it supports hex and rgb, as well as alpha channels</p>
+        <br>
+        <p>for example: color select and hueshift all the corpo blues #50A0F0 to gentle faded pinks #ff69aaaa <br/>
+        or paint over the generic mass market grays (120,120,120,220) with a fiery people's red (210, 1 ,2)</p>
+        <br>
+        <p>this tool is CC0 and within the public domain</p>
+    </footer>
+
+    <script>
+        const themeText = document.getElementById('themeText');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const colorCountEl = document.getElementById('colorCount');
+        let colorFormats = [];
+        let lastThemeFileName = 'theme.txt';
+
+        function findColors(text) {
+            const hexRegex = /#[0-9a-fA-F]{3,8}\b/g;
+            const numRegex = /\b(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(\d{1,3}))?\b/g;
+            const matches = [];
+            
+            let match;
+            while ((match = hexRegex.exec(text)) !== null) {
+                matches.push({ original: match[0], pos: match.index });
+            }
+            
+            while ((match = numRegex.exec(text)) !== null) {
+                const [, r, g, b, a] = match;
+                if (r > 255 || g > 255 || b > 255) continue;
+                matches.push({ original: match[0], pos: match.index, r: +r, g: +g, b: +b });
+            }
+            return matches.sort((a, b) => a.pos - b.pos);
+        }
+
+        function colorToRGBA(colorStr) {
+            if (colorStr.startsWith('#')) {
+                let hex = colorStr.slice(1);
+                if (hex.length < 6) hex = hex.split('').map(c => c + c).join('');
+                const num = parseInt(hex, 16);
+                const hasAlpha = hex.length === 8;
+                return {
+                    r: (num >> (hasAlpha ? 24 : 16)) & 255,
+                    g: (num >> (hasAlpha ? 16 : 8)) & 255,
+                    b: (num >> (hasAlpha ? 8 : 0)) & 255,
+                    a: hasAlpha ? (num & 255) / 255 : 1
+                };
+            }
+            let match = colorStr.match(/rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([0-9.]+)\s*)?\)/);
+            if (!match) match = colorStr.match(/\b(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(\d{1,3}))?\b/);
+            if (match) {
+                const [, r, g, b, a] = match;
+                let alpha = a ? parseFloat(a) : 1;
+                return { r: +r, g: +g, b: +b, a: alpha > 1 ? alpha / 255 : alpha };
+            }
+            return { r: 0, g: 0, b: 0, a: 1 };
+        }
+
+        function generateImage() {
+            const colors = findColors(themeText.value);
+            colorFormats = colors.map(c => c.original);
+            colorCountEl.textContent = colors.length;
+
+            if (!colors.length) return; // canvas defaults to 1x1
+            
+            const size = Math.ceil(Math.sqrt(colors.length));
+            canvas.width = size;
+            canvas.height = size;
+            const imgData = ctx.createImageData(size, size);
+            const data = imgData.data;
+
+            colors.forEach((c, i) => {
+                const rgba = colorToRGBA(c.original);
+                const idx = i * 4;
+                data[idx] = rgba.r;
+                data[idx + 1] = rgba.g;
+                data[idx + 2] = rgba.b;
+                data[idx + 3] = Math.round(rgba.a * 255);
+            });
+            ctx.putImageData(imgData, 0, 0);
+        }
+
+        function parseImageToColors(imageData) {
+            const data = imageData.data;
+            const colors = [];
+            
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                // keep raw alpha 0-255 to avoid rounding drift
+                const a = data[i + 3];
+                colors.push({ r, g, b, a });
+            }
+            
+            return colors;
+        }
+
+        function formatColor(color, format) {
+            const a = color.a <= 1 ? Math.round(color.a * 255) : Math.round(color.a);
+            const isHex = format.startsWith('#');
+            const len = isHex ? format.slice(1).length : 0;
+            
+            if (isHex) {
+                const hex = `${color.r.toString(16).padStart(2, '0')}${color.g.toString(16).padStart(2, '0')}${color.b.toString(16).padStart(2, '0')}`;
+                if ((len === 8 || len === 4) || a < 255) return `#${hex}${a.toString(16).padStart(2, '0')}`;
+                return `#${hex}`;
+            }
+            if (/^\d/.test(format)) return `${color.r}, ${color.g}, ${color.b}${a < 255 ? `, ${a}` : ''}`;
+            return `rgb${a < 255 ? 'a' : ''}(${color.r}, ${color.g}, ${color.b}${a < 255 ? `, ${a}` : ''})`;
+        }
+
+        function updateThemeFromImage(colors) {
+            let text = themeText.value;
+            const matches = findColors(text);
+
+            for (let i = matches.length - 1; i >= 0; i--) {
+                if (i >= colors.length) continue;
+                const m = matches[i];
+                const newColor = formatColor(colors[i], m.original);
+                const a = colors[i].a <= 1 ? Math.round(colors[i].a * 255) : Math.round(colors[i].a);
+                if (/^\d/.test(m.original) && a < 255) {
+                    const prefix = text.substring(Math.max(0, m.pos - 5), m.pos);
+                    if (prefix.includes("rgb(")) {
+                        const rgbPos = text.lastIndexOf("rgb(", m.pos);
+                        if (rgbPos >= 0 && rgbPos + 4 >= m.pos - 1) {
+                            text = text.slice(0, rgbPos) + "rgba(" + text.slice(rgbPos + 4, m.pos) + newColor + text.slice(m.pos + m.original.length);
+                        } else {
+                            text = text.slice(0, m.pos) + newColor + text.slice(m.pos + m.original.length);
+                        }
+                    } else {
+                        text = text.slice(0, m.pos) + newColor + text.slice(m.pos + m.original.length);
+                    }
+                } else {
+                    text = text.slice(0, m.pos) + newColor + text.slice(m.pos + m.original.length);
+                }
+            }
+            themeText.value = text;
+            generateImage();
+        }
+
+        function handleThemeUpload(e) {
+            const file = e.target.files[0];
+            if (file) {
+                lastThemeFileName = file.name;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    themeText.value = event.target.result;
+                    generateImage();
+                };
+                reader.readAsText(file);
+            }
+            e.target.value = '';
+        }
+
+        function downloadFile(content, filename, type) {
+            const blob = new Blob([content], { type });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function downloadTheme() {
+            downloadFile(themeText.value, lastThemeFileName.replace(/(\.[^.]+)?$/, "_transd$1"), 'plain');
+        }
+
+        function downloadImage() {
+            canvas.toBlob(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'colors.png';
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+        }
+
+        function handleImageUpload(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const tmpCanvas = document.createElement('canvas');
+                        tmpCanvas.width = img.width;
+                        tmpCanvas.height = img.height;
+                        const tmpCtx = tmpCanvas.getContext('2d');
+                        tmpCtx.drawImage(img, 0, 0);
+                        const imageData = tmpCtx.getImageData(0, 0, img.width, img.height);
+                        const colors = parseImageToColors(imageData);
+                        updateThemeFromImage(colors);
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+            e.target.value = '';
+        }
+
+        function downloadImage() {
+            canvas.toBlob(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'colors.png';
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+        }
+
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scale = canvas.width / rect.width;
+            const x = Math.floor((e.clientX - rect.left) * scale);
+            const y = Math.floor((e.clientY - rect.top) * scale);
+            const pixelIdx = y * canvas.width + x;
+
+            if (pixelIdx >= 0 && pixelIdx < colorFormats.length) {
+                const matches = findColors(themeText.value);
+                if (pixelIdx < matches.length) {
+                    const match = matches[pixelIdx];
+                    const start = match.pos;
+                    const end = start + match.original.length;
+                    themeText.setSelectionRange(start, end);
+                    themeText.focus();
+                }
+            }
+        });
+
+        themeText.addEventListener('input', generateImage);
+        generateImage();
+    </script>
+</body>
+</html>
