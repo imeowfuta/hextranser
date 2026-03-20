@@ -1,6 +1,8 @@
 # hextranser
 a tool to allow bulk editing of colors in a theme file using image editors
 
+[try it on neocities](https://flooftoyz.neocities.org/hextranser/)
+
 ![screenshot showing a theme file next to it's extracted colormap image, a pixel art cat has been draws on the image using a paint program](screenshot.png)
 
 this tool allows the extraction of the colors from any text based theme file into an image where each pixel represents a color 
